@@ -6,6 +6,11 @@
             -> (if the user wants info from the internet) Web Search Agent
                 -> Post-process Agent
             -> (otherwise) a direct "cannot process" reply
+
+At any stage, Azure OpenAI's own content management policy can reject a
+prompt outright (distinct from our Guardrail Agent's judgment call). Each
+agent surfaces that as a `ContentPolicyBlockedError`, which is caught
+here in one place and treated the same as a Guardrail Agent block.
 """
 from openai import AzureOpenAI
 
@@ -15,6 +20,7 @@ from agents import (
     PostProcessAgent,
     WebSearchAgent,
 )
+from agents.errors import ContentPolicyBlockedError
 from config import Settings
 
 CANNOT_PROCESS_MESSAGE = (
@@ -56,6 +62,13 @@ class Orchestrator:
             print(message)
 
     def run(self, user_query: str) -> str:
+        try:
+            return self._run(user_query)
+        except ContentPolicyBlockedError as exc:
+            self._log(f"[Orchestrator] {exc} -> blocking request.")
+            return BLOCKED_MESSAGE
+
+    def _run(self, user_query: str) -> str:
         self._log("[Guardrail Agent] Screening user query...")
         guardrail = self.guardrail_agent.check(user_query)
 

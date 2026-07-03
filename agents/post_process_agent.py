@@ -5,7 +5,9 @@ the final answer for the user, honoring any formatting/language
 instructions found in the original query (e.g. "answer in Thai",
 "give me a bullet list").
 """
-from openai import AzureOpenAI
+from openai import AzureOpenAI, BadRequestError
+
+from .errors import raise_if_content_filter_error
 
 SYSTEM_PROMPT = """\
 You are the post-processing agent inside a multi-agent system. You receive
@@ -43,12 +45,15 @@ class PostProcessAgent:
             f"Original user query:\n{user_query}\n\n"
             f"Search results:\n{sources_text if sources_text else '(no results found)'}"
         )
-        response = self.client.chat.completions.create(
-            model=self.deployment,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_content},
-            ],
-            temperature=0.3,
-        )
+        try:
+            response = self.client.chat.completions.create(
+                model=self.deployment,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": user_content},
+                ],
+                temperature=0.3,
+            )
+        except BadRequestError as exc:
+            raise_if_content_filter_error(exc)
         return response.choices[0].message.content

@@ -6,7 +6,9 @@ the system refuses immediately and no other agent is invoked.
 """
 import json
 
-from openai import AzureOpenAI
+from openai import AzureOpenAI, BadRequestError
+
+from .errors import raise_if_content_filter_error
 
 SYSTEM_PROMPT = """\
 You are a guardrail/content-safety agent placed in front of a web-search
@@ -48,15 +50,18 @@ class GuardrailAgent:
 
     def check(self, user_query: str) -> dict:
         """Return {"is_appropriate": bool, "reason": str} for the given query."""
-        response = self.client.chat.completions.create(
-            model=self.deployment,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_query},
-            ],
-            temperature=0,
-            response_format={"type": "json_object"},
-        )
+        try:
+            response = self.client.chat.completions.create(
+                model=self.deployment,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": user_query},
+                ],
+                temperature=0,
+                response_format={"type": "json_object"},
+            )
+        except BadRequestError as exc:
+            raise_if_content_filter_error(exc)
         content = response.choices[0].message.content
         try:
             result = json.loads(content)
